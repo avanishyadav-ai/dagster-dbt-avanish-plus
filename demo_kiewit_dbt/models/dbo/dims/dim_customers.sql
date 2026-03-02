@@ -19,5 +19,5 @@ select
     first_name,
     last_name,
     name_initials,
-    CONVERT_TIMEZONE('UTC', 'Asia/Kolkata', current_timestamp()) as _updated_at
+    current_timestamp() as _updated_at
 from customers

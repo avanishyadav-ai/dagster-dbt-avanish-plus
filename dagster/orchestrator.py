@@ -172,4 +172,8 @@ def log_success_to_snowflake(context: RunStatusSensorContext):
 )
 def log_failure_to_snowflake(context: RunStatusSensorContext):
     error_data = None
-    if context.failure_event
+    if context.failure_event and context.failure_event.step_failure_data:
+        error_data = {
+            "error_message": context.failure_event.step_failure_data.error.message
+        }
+    write_run_to_snowflake(context, status="FAILURE", error_msg=error_data)

@@ -2,9 +2,7 @@ name: demo_kiewit_dbt
 version: '1.0.0'
 config-version: 2
 
-
 profile: default
-
 
 model-paths:    [models]
 seed-paths:     [seeds]
@@ -13,10 +11,8 @@ analysis-paths: [analyses]
 macro-paths:    [macros]
 snapshot-paths: [snapshots]
 
-
 target-path: target
 clean-targets: [target, dbt_packages]
-
 
 seeds:
   demo_kiewit_dbt:
@@ -27,7 +23,6 @@ seeds:
       +column_types:
         id: varchar(36)
         name: varchar(100)
-
 
 models:
   demo_kiewit_dbt:

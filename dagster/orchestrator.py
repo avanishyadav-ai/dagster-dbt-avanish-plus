@@ -1,7 +1,5 @@
 import os
 import json
-import requests
-import time
 import snowflake.connector
 from dotenv import load_dotenv
 
@@ -15,99 +13,32 @@ from dagster import (
     AssetSelection,
     in_process_executor,
     DefaultSensorStatus,
-    asset,
-    AssetKey,
-    Output,
+)
+from dagster_dbt import (
+    dbt_cloud_resource,
+    load_assets_from_dbt_cloud_job,
 )
 
 
 # 1. LOAD SECRETS
 load_dotenv()
 
-DBT_CLOUD_API_TOKEN = os.getenv("DBT_CLOUD_API_TOKEN")
-DBT_CLOUD_ACCOUNT_ID = os.getenv("DBT_CLOUD_ACCOUNT_ID")
-DBT_JOB_ID = os.getenv("DBT_JOB_ID")
-DBT_CLOUD_HOST = os.getenv("DBT_CLOUD_HOST")
 
-
-# 2. dbt CLOUD API HELPER
-def trigger_dbt_cloud_job():
-    """Trigger dbt Cloud job and wait for completion."""
-    url = f"{DBT_CLOUD_HOST}/api/v2/accounts/{DBT_CLOUD_ACCOUNT_ID}/jobs/{DBT_JOB_ID}/run/"
-    headers = {
-        "Authorization": f"Token {DBT_CLOUD_API_TOKEN}",
-        "Content-Type": "application/json",
+# 2. CONFIGURE dbt CLOUD CONNECTION
+dbt_cloud_connection = dbt_cloud_resource.configured(
+    {
+        "auth_token": os.getenv("DBT_CLOUD_API_TOKEN"),
+        "account_id": int(os.getenv("DBT_CLOUD_ACCOUNT_ID")),
+        "dbt_cloud_host": os.getenv("DBT_CLOUD_HOST"),
     }
-    body = {"cause": "Triggered by Dagster"}
-
-    response = requests.post(url, headers=headers, json=body)
-    response.raise_for_status()
-    run_id = response.json()["data"]["id"]
-
-    poll_url = f"{DBT_CLOUD_HOST}/api/v2/accounts/{DBT_CLOUD_ACCOUNT_ID}/runs/{run_id}/"
-    while True:
-        poll_response = requests.get(poll_url, headers=headers)
-        poll_response.raise_for_status()
-        status = poll_response.json()["data"]["status"]
-
-        if status == 10:
-            return run_id, "SUCCESS"
-        elif status in (20, 30):
-            return run_id, "FAILURE"
-
-        time.sleep(5)
-
-
-# 3. DEFINE ASSETS
-@asset(
-    key=AssetKey("customer"),
-    group_name="source",
-    compute_kind="dbt",
 )
-def customer():
-    """Seed: SOURCE.CUSTOMER (CSV loaded as-is)"""
-    return Output(None)
 
 
-@asset(
-    key=AssetKey("raw_customers"),
-    deps=[AssetKey("customer")],
-    group_name="bronze",
-    compute_kind="dbt",
+# 3. AUTO-DISCOVER dbt MODELS FROM dbt CLOUD JOB
+customer_dbt_assets = load_assets_from_dbt_cloud_job(
+    dbt_cloud=dbt_cloud_connection,
+    job_id=int(os.getenv("DBT_JOB_ID")),
 )
-def raw_customers():
-    """Bronze: LZ.RAW_CUSTOMERS"""
-    return Output(None)
-
-
-@asset(
-    key=AssetKey("stg_customers"),
-    deps=[AssetKey("raw_customers")],
-    group_name="silver",
-    compute_kind="dbt",
-)
-def stg_customers():
-    """Silver: STAGING.STG_CUSTOMERS (VIEW)"""
-    return Output(None)
-
-
-@asset(
-    key=AssetKey("dim_customers"),
-    deps=[AssetKey("stg_customers")],
-    group_name="gold",
-    compute_kind="dbt",
-    description="Gold: DBO.DIM_CUSTOMERS",
-)
-def dim_customers(context):
-    """Gold: DBO.DIM_CUSTOMERS - triggers the full dbt Cloud pipeline"""
-    context.log.info("Triggering dbt Cloud job...")
-    run_id, status = trigger_dbt_cloud_job()
-    context.log.info(f"dbt Cloud Run #{run_id} finished with status: {status}")
-
-    if status == "FAILURE":
-        raise Exception(f"dbt Cloud Run #{run_id} failed!")
-
-    return Output(None)
 
 
 # 4. SNOWFLAKE AUDIT LOGGING
@@ -192,7 +123,7 @@ daily_schedule = ScheduleDefinition(
 
 # 7. REGISTER EVERYTHING
 defs = Definitions(
-    assets=[customer, raw_customers, stg_customers, dim_customers],
+    assets=[customer_dbt_assets],
     jobs=[run_customer_pipeline],
     schedules=[daily_schedule],
     sensors=[log_success_to_snowflake, log_failure_to_snowflake],

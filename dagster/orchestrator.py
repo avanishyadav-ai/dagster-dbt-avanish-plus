@@ -67,11 +67,12 @@ def write_run_to_snowflake(
             """
             INSERT INTO DAGSTER_JOB_RUNS
               (RUN_ID, JOB_NAME, STATUS,
-               START_TIME, END_TIME, ERROR_MESSAGE)
+               START_TIME, END_TIME, ERROR_MESSAGE, LOGGED_AT)
             VALUES (%s, %s, %s,
-                    TO_TIMESTAMP_NTZ(%s),
-                    TO_TIMESTAMP_NTZ(%s),
-                    %s)
+                    CONVERT_TIMEZONE('UTC', 'Asia/Kolkata', TO_TIMESTAMP_NTZ(%s)),
+                    CONVERT_TIMEZONE('UTC', 'Asia/Kolkata', TO_TIMESTAMP_NTZ(%s)),
+                    %s,
+                    CONVERT_TIMEZONE('America/Los_Angeles', 'Asia/Kolkata', CURRENT_TIMESTAMP()))
             """,
             (run_id, job_name, status,
              stats.start_time, stats.end_time, error_json),

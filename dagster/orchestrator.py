@@ -86,9 +86,9 @@ def write_run_to_snowflake(
         if conn:
             conn.close()
 
-# 4b. FETCH dbt CLOUD RUN DETAILS
+# 4b. FETCH dbt CLOUD RUN DETAILS + LOG TO SNOWFLAKE
 def fetch_dbt_run_results(context):
-    """Fetch per-model results from the latest dbt Cloud run."""
+    """Fetch per-model results from dbt Cloud and log to Snowflake."""
     import requests
 
     host = os.getenv("DBT_CLOUD_HOST")
@@ -103,14 +103,15 @@ def fetch_dbt_run_results(context):
     run_resp = requests.get(runs_url, headers=headers)
     run_resp.raise_for_status()
     latest_run = run_resp.json()["data"][0]
-    run_id = latest_run["id"]
+    dbt_run_id = latest_run["id"]
 
     # Fetch run results artifact
-    artifact_url = f"{host}/api/v2/accounts/{account_id}/runs/{run_id}/artifacts/run_results.json"
+    artifact_url = f"{host}/api/v2/accounts/{account_id}/runs/{dbt_run_id}/artifacts/run_results.json"
     art_resp = requests.get(artifact_url, headers=headers)
     art_resp.raise_for_status()
     results = art_resp.json()["results"]
 
+    # Log to Dagster UI
     for r in results:
         node = r["unique_id"]
         status = r["status"]
@@ -121,6 +122,42 @@ def fetch_dbt_run_results(context):
     passed = sum(1 for r in results if r["status"] in ("success", "pass"))
     failed = sum(1 for r in results if r["status"] == "error")
     context.log.info(f"  dbt Summary: {passed} passed, {failed} failed out of {len(results)} total")
+
+    # Write to Snowflake
+    conn = None
+    try:
+        conn = snowflake.connector.connect(
+            user=os.getenv("SNOWFLAKE_USER"),
+            password=os.getenv("SNOWFLAKE_PASSWORD"),
+            account=os.getenv("SNOWFLAKE_ACCOUNT"),
+            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+            database="SANDBOX",
+            schema="METRICS",
+        )
+        cursor = conn.cursor()
+        dagster_run_id = context.dagster_run.run_id
+
+        for r in results:
+            rows_val = r.get("adapter_response", {}).get("rows_affected")
+            cursor.execute(
+                """
+                INSERT INTO DBT_MODEL_RUNS
+                  (DAGSTER_RUN_ID, DBT_CLOUD_RUN_ID, MODEL_NAME,
+                   STATUS, ROWS_AFFECTED, EXECUTION_TIME, LOGGED_AT)
+                VALUES (%s, %s, %s, %s, %s, %s,
+                    CONVERT_TIMEZONE('America/Los_Angeles', 'Asia/Kolkata', CURRENT_TIMESTAMP()))
+                """,
+                (dagster_run_id, dbt_run_id, r["unique_id"],
+                 r["status"], rows_val, round(r["execution_time"], 2)),
+            )
+
+        conn.commit()
+        context.log.info(f"  Logged {len(results)} model results to SANDBOX.METRICS.DBT_MODEL_RUNS")
+    except Exception as e:
+        context.log.error(f"  Failed to log model results: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 # 5. SENSORS (auto-start)
 @run_status_sensor(
@@ -154,7 +191,7 @@ def log_success_to_snowflake(context: RunStatusSensorContext):
     except Exception as e:
         context.log.warning(f"Could not fetch dbt Cloud details: {e}")
 
-        
+
 # 6. JOB + SCHEDULE
 run_customer_pipeline = define_asset_job(
     name="trigger_customer_dbt_cloud_job",

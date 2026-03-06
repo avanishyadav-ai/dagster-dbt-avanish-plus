@@ -1,7 +1,7 @@
 {{
   config(
     materialized = 'table',
-    database     = 'DAGSTER_DBT_KIEWIT_DB',
+    database     = 'DAGSTER_DBT_KIEWIT_DB_PLUS',
     schema       = 'lz',
     tags         = ['lz', 'bronze']
   )

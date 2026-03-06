@@ -72,8 +72,10 @@ def write_run_to_snowflake(
     dagster_run = context.dagster_run
     run_id = dagster_run.run_id if dagster_run else None
     job_name = dagster_run.job_name if dagster_run else None
-    start_time = dagster_run.start_time if dagster_run else None
-    end_time = dagster_run.end_time if dagster_run else None
+
+    stats = context.instance.get_run_stats(run_id) if run_id else None
+    start_time = stats.start_time if stats else None
+    end_time = stats.end_time if stats else None
 
     with _snowflake_conn_sandbox() as conn:
         with conn.cursor() as cur:
@@ -88,7 +90,15 @@ def write_run_to_snowflake(
                     ERROR_MESSAGE,
                     LOGGED_AT
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP())
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    TO_TIMESTAMP_NTZ(%s),
+                    TO_TIMESTAMP_NTZ(%s),
+                    %s,
+                    CURRENT_TIMESTAMP()
+                )
                 """,
                 (
                     run_id,

@@ -1,0 +1,4 @@
+locations:
+  - location_name: customer_pipeline_plus
+    code_source:
+      python_file: dagster_data/orchestrator.py

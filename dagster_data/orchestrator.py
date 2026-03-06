@@ -69,6 +69,12 @@ customer_dbt_assets = load_assets_from_dbt_cloud_job(
 def write_run_to_snowflake(
     context: RunStatusSensorContext, status: str, error_msg=None
 ):
+    dagster_run = context.dagster_run
+    run_id = dagster_run.run_id if dagster_run else None
+    job_name = dagster_run.job_name if dagster_run else None
+    start_time = dagster_run.start_time if dagster_run else None
+    end_time = dagster_run.end_time if dagster_run else None
+
     with _snowflake_conn_sandbox() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -85,13 +91,11 @@ def write_run_to_snowflake(
                 VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP())
                 """,
                 (
-                    context.run.run_id,
-                    context.pipeline_run.pipeline_name
-                    if context.pipeline_run
-                    else None,
+                    run_id,
+                    job_name,
                     status,
-                    context.run.start_time,
-                    context.run.end_time,
+                    start_time,
+                    end_time,
                     json.dumps(error_msg) if error_msg else None,
                 ),
             )
@@ -130,6 +134,9 @@ def fetch_dbt_run_results(context: RunStatusSensorContext):
     art_resp.raise_for_status()
     results = art_resp.json()["results"]
 
+    dagster_run = context.dagster_run
+    dagster_run_id = dagster_run.run_id if dagster_run else None
+
     with _snowflake_conn_sandbox() as conn:
         with conn.cursor() as cur:
             for r in results:
@@ -147,7 +154,7 @@ def fetch_dbt_run_results(context: RunStatusSensorContext):
                     VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP())
                     """,
                     (
-                        context.run.run_id,
+                        dagster_run_id,
                         run_id,
                         r["unique_id"],
                         r["status"],
@@ -165,8 +172,15 @@ def log_record_counts(context: RunStatusSensorContext):
         ("DBO", "DIM_CUSTOMERS"),
     ]
 
+    dagster_run = context.dagster_run
+    dagster_run_id = dagster_run.run_id if dagster_run else None
+
     with _snowflake_conn_main() as conn:
-        with conn.cursor() as cur, _snowflake_conn_sandbox() as metrics_conn, metrics_conn.cursor() as mcur:  # noqa: E501
+        with (
+            conn.cursor() as cur,
+            _snowflake_conn_sandbox() as metrics_conn,
+            metrics_conn.cursor() as mcur,
+        ):
             for schema_name, table_name in tables:
                 cur.execute(f"SELECT COUNT(*) FROM {schema_name}.{table_name}")
                 rows_after = cur.fetchone()[0]
@@ -189,7 +203,7 @@ def log_record_counts(context: RunStatusSensorContext):
                     VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP())
                     """,
                     (
-                        context.run.run_id,
+                        dagster_run_id,
                         schema_name,
                         table_name,
                         rows_before,

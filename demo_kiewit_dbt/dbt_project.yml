@@ -17,7 +17,7 @@ clean-targets: [target, dbt_packages]
 seeds:
   demo_kiewit_dbt:
     customer:
-      +database: DAGSTER_DBT_KIEWIT_DB
+      +database: DAGSTER_DBT_KIEWIT_DB_PLUS
       +schema: source
       +quote_columns: false
       +column_types:
@@ -28,19 +28,19 @@ seeds:
 models:
   demo_kiewit_dbt:
     lz:
-      +database: DAGSTER_DBT_KIEWIT_DB
+      +database: DAGSTER_DBT_KIEWIT_DB_PLUS
       +schema: lz
       +materialized: table
       +tags: [lz, bronze]
       +group: bronze
     staging:
-      +database: DAGSTER_DBT_KIEWIT_DB
+      +database: DAGSTER_DBT_KIEWIT_DB_PLUS
       +schema: staging
       +materialized: view
       +tags: [staging, silver]
       +group: silver
     dbo:
-      +database: DAGSTER_DBT_KIEWIT_DB
+      +database: DAGSTER_DBT_KIEWIT_DB_PLUS
       +schema: dbo
       +materialized: table
       +tags: [dbo, gold]

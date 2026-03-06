@@ -1,18 +1,18 @@
 user:
   outputs:
     default:
-      account: RYZHARX-JQC36916
+      account: EDYYJKR-IFB99607
       auth_type: password
       client_session_keep_alive: false
       connect_retries: 3
       connect_timeout: 30
-      database: DAGSTER_DBT_KIEWIT_DB
-      password: DagsterDbt@2026!
+      database: DAGSTER_DBT_KIEWIT_DB_PLUS
+      password: avanishdag1234
       retry_on_database_errors: true
       role: null
-      schema: DEV_TUSHAR
+      schema: DEV_AVANISH
       threads: 6
       type: snowflake
-      user: DAGSTER_DBT_USER
+      user: DAGSTER_DBT_USER_PLUS
       warehouse: COMPUTE_WH
   target: default

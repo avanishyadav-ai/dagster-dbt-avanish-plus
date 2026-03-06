@@ -4,7 +4,7 @@ version: 2
 sources:
   - name: raw_customers
     description: 'Raw Jaffle Shop CSV loaded via dbt seed into SOURCE schema'
-    database: DAGSTER_DBT_KIEWIT_DB
+    database: DAGSTER_DBT_KIEWIT_DB_PLUS
     schema: SOURCE
     tables:
       - name: CUSTOMER

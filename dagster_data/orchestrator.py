@@ -12,7 +12,6 @@ from dagster import (
     DagsterRunStatus,
     AssetSelection,
     DefaultSensorStatus,
-    tag_match_filter,          # NEW
 )
 from dagster_dbt import dbt_cloud_resource, load_assets_from_dbt_cloud_job
 
@@ -245,8 +244,8 @@ daily_schedule = ScheduleDefinition(
 # NEW: Tag-filtered daily job + schedule
 run_daily_tag_pipeline = define_asset_job(
     name="trigger_daily_tag_dbt_cloud_job",    # NEW job name
-    selection=AssetSelection.tag("dagster/kind", "daily_tag"),  # Dagster-side tag filter
-    tags={"pipeline_type": "daily_tag"},        # used by sensor to identify this job
+    selection=AssetSelection.all(),            # selects daily_tag_dbt_assets loaded from daily-tag job
+    tags={"pipeline_type": "daily_tag"},       # used by sensor to identify this job
 )
 
 daily_tag_schedule = ScheduleDefinition(       # NEW schedule

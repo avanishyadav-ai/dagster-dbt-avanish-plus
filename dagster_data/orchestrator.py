@@ -16,7 +16,7 @@ from dagster import (
 from dagster_dbt import dbt_cloud_resource, load_assets_from_dbt_cloud_job
 
 # ----------------
-# Snowflake helpers  (unchanged)
+# Snowflake helpers
 # ----------------
 def _snowflake_conn_sandbox():
     password = os.getenv("SNOWFLAKE_PASSWORD")
@@ -44,7 +44,7 @@ def _snowflake_conn_main():
     )
 
 # ----------------
-# dbt Cloud resource  (unchanged)
+# dbt Cloud resource
 # ----------------
 dbt_cloud_connection = dbt_cloud_resource.configured(
     {
@@ -54,21 +54,21 @@ dbt_cloud_connection = dbt_cloud_resource.configured(
     }
 )
 
-# Original full-run assets  (unchanged)
+# Full-run assets (original job)
 customer_dbt_assets = load_assets_from_dbt_cloud_job(
     dbt_cloud=dbt_cloud_connection,
     job_id=int(os.getenv("DBT_JOB_ID")),
 )
 
-# NEW: Tag-filtered daily assets — loaded from the daily-tag job
+# Tag-filtered daily assets (new daily-tag job)
 daily_tag_dbt_assets = load_assets_from_dbt_cloud_job(
     dbt_cloud=dbt_cloud_connection,
     job_id=int(os.getenv("DBT_DAILY_TAG_JOB_ID")),
-    node_info_to_asset_key=lambda node_info: node_info["unique_id"],  # avoid key collision
+    node_info_to_asset_key=lambda node_info: node_info["unique_id"],
 )
 
 # ----------------
-# Logging helpers  (unchanged — write_run_to_snowflake, fetch_dbt_run_results, log_record_counts)
+# Logging helpers
 # ----------------
 def write_run_to_snowflake(context: RunStatusSensorContext, status: str, error_msg=None):
     with _snowflake_conn_sandbox() as conn:
@@ -91,11 +91,10 @@ def write_run_to_snowflake(context: RunStatusSensorContext, status: str, error_m
             )
 
 def fetch_dbt_run_results(context: RunStatusSensorContext, job_id_env: str = "DBT_JOB_ID"):
-    """Fetch latest dbt run results for a given job env var and write to DBT_MODEL_RUNS."""
-    host      = os.getenv("DBT_CLOUD_HOST")
+    host       = os.getenv("DBT_CLOUD_HOST")
     account_id = os.getenv("DBT_CLOUD_ACCOUNT_ID")
-    token     = os.getenv("DBT_CLOUD_API_TOKEN")
-    job_id    = os.getenv(job_id_env)   # NEW: accepts job_id_env param
+    token      = os.getenv("DBT_CLOUD_API_TOKEN")
+    job_id     = os.getenv(job_id_env)
 
     headers = {
         "Authorization": f"Token {token}",
@@ -110,7 +109,7 @@ def fetch_dbt_run_results(context: RunStatusSensorContext, job_id_env: str = "DB
         context.log.warning(f"No dbt Cloud runs found for job {job_id}")
         return
 
-    run_id = data[0]["id"]
+    run_id  = data[0]["id"]
     art_url = f"{host}/api/v2/accounts/{account_id}/runs/{run_id}/artifacts/run_results.json"
     art_resp = requests.get(art_url, headers=headers)
     art_resp.raise_for_status()
@@ -150,7 +149,7 @@ def log_record_counts(context: RunStatusSensorContext):
              metrics_conn.cursor() as mcur:
             for schema_name, table_name in tables:
                 cur.execute(f"SELECT COUNT(*) FROM {schema_name}.{table_name}")
-                rows_after = cur.fetchone()[0]
+                rows_after  = cur.fetchone()[0]
                 rows_before = 0
                 rows_added  = rows_after - rows_before
                 mcur.execute(
@@ -168,7 +167,7 @@ def log_record_counts(context: RunStatusSensorContext):
                 )
 
 # ----------------
-# Retry helper  (unchanged)
+# Retry helper
 # ----------------
 def trigger_dbt_retry(context: RunStatusSensorContext):
     host         = os.getenv("DBT_CLOUD_HOST")
@@ -180,25 +179,23 @@ def trigger_dbt_retry(context: RunStatusSensorContext):
         context.log.warning("DBT_RETRY_JOB_ID not set, skipping retry")
         return
 
-    headers = {"Authorization": f"Token {token}", "Content-Type": "application/json"}
-    url  = f"{host}/api/v2/accounts/{account_id}/jobs/{retry_job_id}/run/"
-    body = {"cause": "Auto-retry triggered by Dagster on failure"}
+    headers  = {"Authorization": f"Token {token}", "Content-Type": "application/json"}
+    url      = f"{host}/api/v2/accounts/{account_id}/jobs/{retry_job_id}/run/"
+    body     = {"cause": "Auto-retry triggered by Dagster on failure"}
     response = requests.post(url, headers=headers, json=body)
     response.raise_for_status()
-    run_id = response.json()["data"]["id"]
+    run_id   = response.json()["data"]["id"]
     context.log.info(f"Retry job triggered! dbt Cloud Run ID: {run_id}")
 
 # ----------------
-# Sensors  (updated to distinguish full vs. daily-tag runs)
+# Sensors
 # ----------------
 @run_status_sensor(
     run_status=DagsterRunStatus.SUCCESS,
     default_status=DefaultSensorStatus.RUNNING,
-    monitored_jobs=None,   # monitors ALL jobs — both full and daily-tag
 )
 def log_success_to_snowflake(context: RunStatusSensorContext):
     write_run_to_snowflake(context, status="SUCCESS")
-    # NEW: detect which job fired and use appropriate dbt job ID
     job_id_env = (
         "DBT_DAILY_TAG_JOB_ID"
         if context.pipeline_run
@@ -229,7 +226,7 @@ def log_failure_to_snowflake(context: RunStatusSensorContext):
 # Jobs & Schedules
 # ----------------
 
-# Original full-run job + schedule  (unchanged)
+# Original full-run job
 run_customer_pipeline = define_asset_job(
     name="trigger_customer_dbt_cloud_job",
     selection=AssetSelection.all(),
@@ -237,29 +234,29 @@ run_customer_pipeline = define_asset_job(
 
 daily_schedule = ScheduleDefinition(
     job=run_customer_pipeline,
-    cron_schedule="0 6 * * *",   # 6 AM UTC — full run
+    cron_schedule="0 6 * * *",
     execution_timezone="UTC",
 )
 
-# NEW: Tag-filtered daily job + schedule
+# Tag-filtered daily job
 run_daily_tag_pipeline = define_asset_job(
-    name="trigger_daily_tag_dbt_cloud_job",    # NEW job name
-    selection=AssetSelection.all(),            # selects daily_tag_dbt_assets loaded from daily-tag job
-    tags={"pipeline_type": "daily_tag"},       # used by sensor to identify this job
+    name="trigger_daily_tag_dbt_cloud_job",
+    selection=AssetSelection.all(),
+    tags={"pipeline_type": "daily_tag"},
 )
 
-daily_tag_schedule = ScheduleDefinition(       # NEW schedule
+daily_tag_schedule = ScheduleDefinition(
     job=run_daily_tag_pipeline,
-    cron_schedule="0 7 * * *",   # 7 AM UTC — tag-filtered run (1 hr after full)
+    cron_schedule="0 7 * * *",
     execution_timezone="UTC",
 )
 
 # ----------------
-# Definitions  (updated to include new assets/jobs/schedules)
+# Definitions
 # ----------------
 defs = Definitions(
-    assets=[customer_dbt_assets, daily_tag_dbt_assets],   # NEW: added daily_tag_dbt_assets
-    jobs=[run_customer_pipeline, run_daily_tag_pipeline],  # NEW: added daily tag job
-    schedules=[daily_schedule, daily_tag_schedule],        # NEW: added daily tag schedule
+    assets=[customer_dbt_assets, daily_tag_dbt_assets],
+    jobs=[run_customer_pipeline, run_daily_tag_pipeline],
+    schedules=[daily_schedule, daily_tag_schedule],
     sensors=[log_success_to_snowflake, log_failure_to_snowflake],
 )

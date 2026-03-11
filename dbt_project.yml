@@ -1,0 +1,15 @@
+# demo_kiewit_dbt/dbt_project.yml
+models:
+  dagster-dbt-avanish-plus:
+    source:
+      +schema: SOURCE
+      +tags: ["daily"]       # all source-layer models get tag:daily
+    bronze:
+      +schema: LZ
+      +tags: ["daily"]
+    silver:
+      +schema: STAGING
+      +tags: ["daily"]
+    gold:
+      +schema: DBO
+      +tags: ["daily"]
